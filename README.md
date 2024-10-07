@@ -1,8 +1,8 @@
-# Algoritmo de Consenso Híbrido CCR-CCC: Un Enfoque Innovador para Sistemas Distribuidos
+# Algoritmo de Consenso Híbrido CCR-CCC
 
 ## Resumen
 
-Este artículo presenta el Algoritmo de Consenso Híbrido CCR-CCC, una aproximación novedosa para lograr consenso en sistemas distribuidos. Combinando elementos de Consenso por Redundancia de Capas Cruzadas (CCR) y Consenso por Comunicación de Capas Cruzadas (CCC), este algoritmo busca proporcionar un rendimiento mejorado, tolerancia a fallos y escalabilidad en comparación con los mecanismos de consenso tradicionales. Presentamos los fundamentos teóricos, el modelo matemático, la implementación y los resultados experimentales exhaustivos de este enfoque híbrido.
+Algoritmo de Consenso Híbrido CCR-CCC, una aproximación para lograr consenso en sistemas distribuidos. Combinando elementos de Consenso por Redundancia de Capas Cruzadas (CCR) y Consenso por Comunicación de Capas Cruzadas (CCC), este algoritmo busca proporcionar un rendimiento mejorado, tolerancia a fallos y escalabilidad en comparación con los mecanismos de consenso tradicionales.
 
 ## 1. Introducción
 

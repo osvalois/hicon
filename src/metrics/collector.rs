@@ -14,11 +14,11 @@ impl MetricsCollector {
     }
 
     pub fn record_message_received(&self) {
-        counter!("messages_received").increment(1);
+        counter!("messages_received", 1);
     }
 
     pub fn update_node_state(&self, state: &str) {
-        gauge!("node_state", "state" => state.to_string()).set(1.0);
+        gauge!("node_state", 1.0, "state" => state.to_string());
     }
 
     // Implement other metrics collection methods

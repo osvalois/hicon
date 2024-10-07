@@ -1,4 +1,3 @@
-// src/lib.rs
 pub mod node;
 pub mod ccr;
 pub mod ccc;
@@ -6,6 +5,7 @@ pub mod network;
 pub mod sharding;
 pub mod crypto;
 pub mod metrics;
+pub mod consensus;
 
 use thiserror::Error;
 
@@ -19,6 +19,8 @@ pub enum HybridConsensusError {
     CryptoError(#[from] crypto::CryptoError),
     #[error("Sharding error: {0}")]
     ShardingError(String),
+    #[error("Serialization error: {0}")]
+    SerializationError(#[from] serde_json::Error),
 }
 
 pub type Result<T> = std::result::Result<T, HybridConsensusError>;
