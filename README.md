@@ -117,9 +117,9 @@ impl ConsensusEngine {
 }
 ```
 
-## 5. Resultados Experimentales
+## 5. Resultados Experimentales esperados
 
-Evaluamos el Algoritmo de Consenso Híbrido CCR-CCC en un entorno de simulación que consta de 1000 nodos distribuidos en 10 capas. Comparamos nuestro algoritmo con implementaciones estándar de Raft y PBFT (Practical Byzantine Fault Tolerance). Los experimentos se realizaron en un clúster de 50 máquinas, cada una con procesadores Intel Xeon E5-2680 v4 y 128 GB de RAM.
+Evaluar el Algoritmo de Consenso Híbrido CCR-CCC en un entorno de simulación con 1000 nodos distribuidos en 10 capas. Compararemos nuestro algoritmo con implementaciones estándar de Raft y PBFT (Practical Byzantine Fault Tolerance).
 
 ### 5.1 Tolerancia a Fallos
 
@@ -298,31 +298,36 @@ impl ConsensusEngine {
 }
 ```
 
-## 5. Resultados Experimentales
+## 5. Resultados Experimentales Esperados
 
-Evaluamos el Algoritmo de Consenso Híbrido CCR-CCC en un entorno de simulación que consta de 1000 nodos distribuidos en 10 capas. Comparamos nuestro algoritmo con implementaciones estándar de Raft y PBFT (Practical Byzantine Fault Tolerance). Los experimentos se realizaron en un clúster de 50 máquinas, cada una con procesadores Intel Xeon E5-2680 v4 y 128 GB de RAM.
+Se propone evaluar el Algoritmo de Consenso Híbrido CCR-CCC en un entorno de simulación que constará de 1000 nodos distribuidos en 10 capas. El experimento planea comparar este nuevo algoritmo con implementaciones estándar de Raft y PBFT (Practical Byzantine Fault Tolerance). Las pruebas se llevarán a cabo en un clúster de 50 máquinas, cada una equipada con procesadores Intel Xeon E5-2680 v4 y 128 GB de RAM.
 
 ### 5.1 Tolerancia a Fallos
 
-Medimos la tolerancia a fallos introduciendo fallas aleatorias en los nodos y observando el tiempo de recuperación del sistema. Los resultados muestran:
+En el ámbito de la tolerancia a fallos, el experimento buscará medir:
 
-- Una mejora del 40% en el tiempo medio de recuperación en comparación con Raft.
-- Capacidad para mantener el consenso con hasta un 33% de nodos fallidos, en comparación con el límite teórico del 33% para PBFT.
+- El tiempo de recuperación del sistema tras la introducción de fallas aleatorias en los nodos.
+- La capacidad del sistema para mantener el consenso bajo diferentes porcentajes de nodos fallidos.
+
+Se espera observar:
+- Una mejora aproximada del 40% en el tiempo medio de recuperación en comparación con Raft.
+- La capacidad de mantener el consenso con hasta un 33% de nodos fallidos, equiparando el límite teórico de PBFT.
 
 ### 5.2 Latencia de Consenso
 
-Evaluamos la latencia de consenso midiendo el tiempo promedio necesario para que el sistema alcance el consenso después de una actualización de estado:
+Para evaluar la latencia de consenso, se medirá el tiempo promedio necesario para que el sistema alcance el consenso después de una actualización de estado. Las expectativas incluyen:
 
-- Reducción del 35% en la latencia media de consenso en comparación con Raft.
-- Mejora del 20% en la latencia del percentil 99 en comparación con PBFT.
+- Una reducción potencial del 35% en la latencia media de consenso en comparación con Raft.
+- Una mejora estimada del 20% en la latencia del percentil 99 en comparación con PBFT.
 
 ### 5.3 Escalabilidad
 
-Probamos la escalabilidad del sistema aumentando el número de nodos de 100 a 10,000:
+Las pruebas de escalabilidad proyectadas aumentarán el número de nodos de 100 a 10,000. Se anticipa observar:
 
-- El tiempo de consenso creció logarítmicamente con el número de nodos, en comparación con el crecimiento lineal observado en Raft y PBFT.
-- Mantuvo un rendimiento constante de más de 10,000 transacciones por segundo, incluso con 10,000 nodos.
+- Un crecimiento logarítmico del tiempo de consenso con el aumento del número de nodos, en contraste con el crecimiento lineal típicamente observado en Raft y PBFT.
+- El mantenimiento de un rendimiento constante de más de 10,000 transacciones por segundo, incluso al escalar a 10,000 nodos.
 
+Es importante destacar que estos resultados son proyecciones basadas en el diseño teórico del Algoritmo de Consenso Híbrido CCR-CCC. Las pruebas experimentales aún no se han llevado a cabo, y los resultados reales podrían variar. La realización de estos experimentos y la validación empírica de estas hipótesis proporcionarán evidencia crucial sobre el rendimiento, la tolerancia a fallos y la escalabilidad del algoritmo propuesto en comparación con los métodos existentes.
 ## 6. Discusión
 
 Los resultados experimentales demuestran que el Algoritmo de Consenso Híbrido CCR-CCC ofrece mejoras significativas en términos de tolerancia a fallos, latencia y escalabilidad en comparación con los algoritmos de consenso existentes. La combinación de redundancia de capas cruzadas y comunicación optimizada permite al sistema mantener un alto rendimiento incluso en presencia de fallos y con un gran número de nodos.
