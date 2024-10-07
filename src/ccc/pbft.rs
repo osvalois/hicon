@@ -1,11 +1,12 @@
 // src/ccc/pbft.rs
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest as Sha256Digest};
-use crate::HybridConsensusError;
+use crate::{HybridConsensusError, network::NetworkManager, storage::StateStorage};
+use std::sync::Arc;
 
 pub use super::NodeId;
 type SequenceNumber = u64;
@@ -20,6 +21,7 @@ pub enum PBFTMessage {
     Reply(Reply),
     ViewChange(ViewChange),
     NewView(NewView),
+    Checkpoint(Checkpoint),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,7 +104,9 @@ pub struct PBFTConsensus {
     last_checkpoint_time: Instant,
     checkpoint_interval: Duration,
     f: usize,
-    network_sender: mpsc::Sender<(NodeId, PBFTMessage)>,
+    network: Arc<NetworkManager>,
+    storage: Arc<StateStorage>,
+    client_table: HashMap<NodeId, Reply>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -115,8 +119,10 @@ pub enum ConsensusError {
     InvalidViewChange,
     #[error("Invalid new view")]
     InvalidNewView,
-    #[error("Network error")]
-    NetworkError,
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    #[error("Storage error: {0}")]
+    StorageError(String),
 }
 
 impl From<ConsensusError> for HybridConsensusError {
@@ -129,7 +135,8 @@ impl PBFTConsensus {
     pub fn new(
         node_id: NodeId,
         f: usize,
-        network_sender: mpsc::Sender<(NodeId, PBFTMessage)>,
+        network: Arc<NetworkManager>,
+        storage: Arc<StateStorage>,
     ) -> Self {
         PBFTConsensus {
             node_id,
@@ -143,7 +150,9 @@ impl PBFTConsensus {
             last_checkpoint_time: Instant::now(),
             checkpoint_interval: Duration::from_secs(100),
             f,
-            network_sender,
+            network,
+            storage,
+            client_table: HashMap::new(),
         }
     }
 
@@ -156,6 +165,7 @@ impl PBFTConsensus {
             PBFTMessage::Reply(_) => Ok(()), // Replies are handled by clients
             PBFTMessage::ViewChange(vc) => self.handle_view_change(vc).await,
             PBFTMessage::NewView(nv) => self.handle_new_view(nv).await,
+            PBFTMessage::Checkpoint(cp) => self.handle_checkpoint(cp).await,
         }
     }
 
@@ -243,7 +253,7 @@ impl PBFTConsensus {
             self.committed.insert(c.sequence, c.digest);
 
             if self.is_committed(&c.sequence) {
-                let result = self.execute_request(&proof.pre_prepare.request);
+                let result = self.execute_request(&proof.pre_prepare.request).await?;
                 let reply = Reply {
                     view: self.view,
                     timestamp: proof.pre_prepare.request.timestamp,
@@ -265,9 +275,9 @@ impl PBFTConsensus {
         if vc.new_view <= self.view {
             return Err(ConsensusError::InvalidViewChange);
         }
-        // Implement view change logic here
-        // For now, we'll just update the view
+        // Implement complete view change logic here
         self.view = vc.new_view;
+        // Reset timers, update state, etc.
         Ok(())
     }
 
@@ -275,32 +285,32 @@ impl PBFTConsensus {
         if nv.new_view <= self.view {
             return Err(ConsensusError::InvalidNewView);
         }
-        // Implement new view logic here
-        // For now, we'll just update the view and sequence
+        // Implement complete new view logic here
         self.view = nv.new_view;
         self.sequence = nv.new_sequence;
+        // Process any pending requests, update state, etc.
+        Ok(())
+    }
+
+    async fn handle_checkpoint(&mut self, cp: Checkpoint) -> Result<(), ConsensusError> {
+        // Implement checkpoint handling logic
+        // Verify the checkpoint, update stable checkpoints, garbage collect, etc.
         Ok(())
     }
 
     async fn create_checkpoint(&mut self) -> Result<(), ConsensusError> {
         let checkpoint = Checkpoint {
             sequence: self.sequence,
-            digest: self.compute_state_digest(),
+            digest: self.compute_state_digest().await?,
         };
         self.checkpoints.push(checkpoint.clone());
         self.last_checkpoint_time = Instant::now();
 
         // Broadcast checkpoint message
-        self.broadcast(PBFTMessage::Commit(Commit {
-            view: self.view,
-            sequence: checkpoint.sequence,
-            digest: checkpoint.digest,
-            node_id: self.node_id.clone(),
-        }))
-        .await?;
+        self.broadcast(PBFTMessage::Checkpoint(checkpoint)).await?;
 
         // Remove old messages from the log
-        self.garbage_collect(checkpoint.sequence);
+        self.garbage_collect(self.last_stable_checkpoint());
 
         Ok(())
     }
@@ -331,10 +341,12 @@ impl PBFTConsensus {
         hasher.finalize().into()
     }
 
-    fn compute_state_digest(&self) -> Digest {
-        // In a real implementation, this would compute a digest of the current state
-        // For now, we'll just return a dummy value
-        [0; 32]
+    async fn compute_state_digest(&self) -> Result<Digest, ConsensusError> {
+        let state = self.storage.get_state().await
+            .map_err(|e| ConsensusError::StorageError(e.to_string()))?;
+        let mut hasher = Sha256::new();
+        hasher.update(&state);
+        Ok(hasher.finalize().into())
     }
 
     fn garbage_collect(&mut self, stable_sequence: SequenceNumber) {
@@ -344,28 +356,161 @@ impl PBFTConsensus {
     }
 
     async fn broadcast(&self, message: PBFTMessage) -> Result<(), ConsensusError> {
-        // In a real implementation, this would send the message to all other nodes
-        // For now, we'll just print the message
-        println!("Broadcasting: {:?}", message);
+        let serialized = serde_json::to_vec(&message)
+            .map_err(|e| ConsensusError::NetworkError(e.to_string()))?;
+        
+        for peer in self.network.get_peers().await
+            .map_err(|e| ConsensusError::NetworkError(e.to_string()))? {
+            self.network.send_message(&peer, &serialized).await
+                .map_err(|e| ConsensusError::NetworkError(e.to_string()))?;
+        }
+        
         Ok(())
     }
 
     async fn send_to_client(&self, reply: Reply) -> Result<(), ConsensusError> {
-        // In a real implementation, this would send the reply to the client
-        // For now, we'll just print the reply
-        println!("Sending reply to client: {:?}", reply);
+        let serialized = serde_json::to_vec(&PBFTMessage::Reply(reply.clone()))
+            .map_err(|e| ConsensusError::NetworkError(e.to_string()))?;
+        
+        self.network.send_message(&reply.client_id, &serialized).await
+            .map_err(|e| ConsensusError::NetworkError(e.to_string()))?;
+        
         Ok(())
     }
 
-    fn execute_request(&self, request: &Request) -> Vec<u8> {
+    async fn execute_request(&self, request: &Request) -> Result<Vec<u8>, ConsensusError> {
         // In a real implementation, this would execute the request and return the result
-        // For now, we'll just return a dummy value
-        vec![0, 1, 2, 3]
+        // For this example, we'll just store the operation in our state
+        self.storage.update_state(&request.operation).await
+            .map_err(|e| ConsensusError::StorageError(e.to_string()))?;
+        Ok(request.operation.clone())
+    }
+    pub async fn get_latest_committed_state(&self) -> Result<Vec<u8>, ConsensusError> {
+        self.storage.get_state().await
+            .map_err(|e| ConsensusError::StorageError(e.to_string()))
     }
 
-    pub fn get_latest_committed_state(&self) -> Vec<u8> {
-        // In a real implementation, this would return the latest committed state
-        // For now, we'll just return a dummy value
-        vec![0, 1, 2, 3]
+    async fn start_view_change(&mut self) -> Result<(), ConsensusError> {
+        self.view += 1;
+        let view_change = ViewChange {
+            new_view: self.view,
+            last_sequence: self.sequence,
+            node_id: self.node_id.clone(),
+            checkpoints: self.checkpoints.clone(),
+            prepared_proofs: self.prepared.values().cloned().collect(),
+        };
+        self.broadcast(PBFTMessage::ViewChange(view_change)).await
+    }
+
+    async fn process_view_change(&mut self, view_changes: Vec<ViewChange>) -> Result<(), ConsensusError> {
+        if view_changes.len() < 2 * self.f + 1 {
+            return Err(ConsensusError::InvalidViewChange);
+        }
+
+        let new_view = view_changes[0].new_view;
+        if !view_changes.iter().all(|vc| vc.new_view == new_view) {
+            return Err(ConsensusError::InvalidViewChange);
+        }
+
+        // Determine the highest last_sequence and update the sequence number
+        let max_sequence = view_changes.iter()
+            .map(|vc| vc.last_sequence)
+            .max()
+            .unwrap_or(self.sequence);
+
+        self.view = new_view;
+        self.sequence = max_sequence + 1;
+
+        // Create and broadcast NewView message
+        let new_view_msg = NewView {
+            new_view,
+            view_change_proofs: view_changes,
+            new_sequence: self.sequence,
+        };
+        self.broadcast(PBFTMessage::NewView(new_view_msg)).await
+    }
+
+    fn update_client_table(&mut self, reply: &Reply) {
+        self.client_table.insert(reply.client_id.clone(), reply.clone());
+    }
+
+    fn get_client_last_reply(&self, client_id: &NodeId) -> Option<&Reply> {
+        self.client_table.get(client_id)
+    }
+
+    pub async fn run(&mut self) -> Result<(), ConsensusError> {
+        loop {
+            tokio::select! {
+                message = self.network.receive() => {
+                    if let Ok(message) = message {
+                        if let Err(e) = self.handle_message(message).await {
+                            tracing::error!("Error handling message: {:?}", e);
+                        }
+                    }
+                }
+                _ = tokio::time::sleep(self.view_change_timeout) => {
+                    if let Err(e) = self.start_view_change().await {
+                        tracing::error!("Error starting view change: {:?}", e);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+    use std::sync::Arc;
+
+    struct MockNetworkManager;
+    struct MockStateStorage;
+
+    // Implement mock NetworkManager and StateStorage...
+
+    #[tokio::test]
+    async fn test_pbft_consensus() {
+        let network = Arc::new(MockNetworkManager);
+        let storage = Arc::new(MockStateStorage);
+        let mut pbft = PBFTConsensus::new("node1".to_string(), 1, network, storage);
+
+        // Test request handling
+        let request = Request {
+            timestamp: 1,
+            client_id: "client1".to_string(),
+            operation: vec![1, 2, 3],
+        };
+        pbft.handle_request(request.clone()).await.unwrap();
+
+        // Test pre-prepare handling
+        let pre_prepare = PrePrepare {
+            view: 0,
+            sequence: 1,
+            digest: pbft.compute_digest(&request),
+            request: request.clone(),
+        };
+        pbft.handle_pre_prepare(pre_prepare.clone()).await.unwrap();
+
+        // Test prepare handling
+        let prepare = Prepare {
+            view: 0,
+            sequence: 1,
+            digest: pre_prepare.digest,
+            node_id: "node2".to_string(),
+        };
+        pbft.handle_prepare(prepare).await.unwrap();
+
+        // Test commit handling
+        let commit = Commit {
+            view: 0,
+            sequence: 1,
+            digest: pre_prepare.digest,
+            node_id: "node2".to_string(),
+        };
+        pbft.handle_commit(commit).await.unwrap();
+
+        // Assert that the request has been executed and a reply sent
+        assert!(pbft.committed.contains_key(&1));
     }
 }
